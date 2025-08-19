@@ -1,0 +1,8 @@
+/shape-transformation-4d/output
+/shape-transformation/.ipynb_checkpoints
+/shape-transformation/data
+*.zip
+/shape-transformation/figures
+*.pyc
+/shape-transformation/output
+/shape-transformation/archive
