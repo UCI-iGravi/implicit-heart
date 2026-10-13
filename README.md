@@ -80,6 +80,19 @@ Run from the `notebooks/` folder; paths are relative to it.
 Datasets are not redistributed here. Download them from their providers and place them under `data/`
 (ignored by git). Generated results go to `output/`.
 
+## Whole-brain example
+
+`examples/data/B0039_brain_25um_mask.npz` (0.43 MB) is a mouse-brain tissue mask: 280 coronal sections at
+25 µm in-plane and 50 µm apart, from RegTools' 3-D GrabCut seeded by Multi-Otsu-4. It has keys `mask`
+(section, y, x) and `spacing_mm`. `examples/b0039_brain.py` fits every 8th section with a windowed fit and
+writes surfaces, field plots and held-out comparisons to `output/b0039/`. On held-out sections, dice is 0.988,
+against 0.976 for copying the nearest keyframe.
+
+```bash
+pip install -e ".[viz]"
+python examples/b0039_brain.py
+```
+
 ## Rendering volumes
 
 ```bash
