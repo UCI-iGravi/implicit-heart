@@ -256,7 +256,8 @@ class Data:
             grad = np.array([grad_x[y, x], grad_y[y, x]])
             norm = np.linalg.norm(grad)
             if norm == 0:
-                logger.warning("Sobel gradient is zero at %s; skipping its normal constraints.", (x, y))
+                # Isolated or 1-px-wide contour pixels; common in large masks, so not a warning.
+                logger.debug("Sobel gradient is zero at %s; skipping its normal constraints.", (x, y))
                 self.constraints[idx].append((np.array([x, y, *extra], dtype=float), 0))
                 continue
             grad /= norm
