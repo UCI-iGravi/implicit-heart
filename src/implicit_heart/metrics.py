@@ -1,5 +1,8 @@
 # 3rd party libraries
+import cv2
 import numpy as np
+
+from .data import APPROX, RET_MODE
 
 
 def dice(im1, im2, empty_score=1.0):
@@ -111,14 +114,6 @@ def recall(img, ground_truth):
     return tp / (tp + fn)
 
 
-def _polygon_area(pts) -> float:
-    """Shoelace area of a polygon given as an ordered (n, 2) array of points."""
-    if len(pts) == 0:  # slice without a boundary
-        return 0.0
-    x, y = np.asarray(pts, dtype=float).T
-    return 0.5 * abs(np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
-
-
 def ejection_fraction(volumes: np.ndarray) -> float:
     """
     Ejection fraction (%) from voxel counts of a sequence of masks indexed as volumes[t, ...].
@@ -127,14 +122,44 @@ def ejection_fraction(volumes: np.ndarray) -> float:
     return (max(counts) - min(counts)) / max(counts) * 100
 
 
-def ejection_fraction_from_constraints(imp) -> float:
+def ejection_fraction_surface(imp, ts=None, step: int = 1) -> float:
     """
-    Ejection fraction (%) of a 4D ImplicitFunction, estimated per time-step by summing
-    the polygon areas enclosed by each slice's boundary constraints.
+    Ejection fraction (%) of a 4D ImplicitFunction from the volumes enclosed by its f = 0 surface
+    (marching cubes on the sampled field), taking min/max volume over ts as ES/ED (paper Sec. 3.5.4).
+    :param ts: time coordinates to evaluate; default: the input frames.
+    :param step: pixel stride in x and y when sampling f.
     """
-    areas = []
-    for t in sorted(imp.data.constraints4D):
-        slices = imp.data.constraints4D[t]
-        areas.append(sum(_polygon_area([pt[:2] for pt, value in slices[z] if value == 0])
-                         for z in sorted(slices)))
+    from skimage.measure import marching_cubes
+    from .visualize import sample_field
+
+    ts = [imp.data._coord(i) for i in range(imp.dim[0])] if ts is None else ts
+    volumes = []
+    for t in ts:
+        # Half-gap samples; repeat the end slices half a gap outward so each slice stands for a slab one
+        # slice gap thick (as voxel counting assumes), then close the surface sharply.
+        f, _, (dx, dy, dz) = sample_field(imp, t, step, z_samples=2)
+        f = np.concatenate([f[:1], f, f[-1:]])
+        f = np.pad(f, 1, constant_values=-1e9)
+        verts, faces, _, _ = marching_cubes(f, 0.0, spacing=(dz, dy, dx))
+        v0, v1, v2 = verts[faces].transpose(1, 0, 2)
+        volumes.append(abs(np.einsum('ij,ij->i', v0, np.cross(v1, v2)).sum()) / 6)
+    return (max(volumes) - min(volumes)) / max(volumes) * 100
+
+
+def ejection_fraction_polygon(volumes: np.ndarray) -> float:
+    """
+    Ejection fraction (%) of masks indexed as volumes[t, slice, y, x], with each time-step's
+    volume estimated as the summed area of the contour polygons that become boundary constraints
+    (outer contours minus holes).
+    """
+    areas = [sum(_contour_area(img) for img in volume) for volume in volumes]
     return (max(areas) - min(areas)) / max(areas) * 100
+
+
+def _contour_area(img: np.ndarray) -> float:
+    contours, hierarchy = cv2.findContours(img.astype('uint8'), RET_MODE, APPROX)
+    if not contours:
+        return 0.0
+    # With RETR_CCOMP, contours with a parent are holes.
+    return sum(cv2.contourArea(c) * (1 if parent == -1 else -1)
+               for c, parent in zip(contours, hierarchy[0][:, 3]))
