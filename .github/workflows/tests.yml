@@ -17,7 +17,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      # Off-screen PyVista rendering (tests/test_visualize.py) needs a virtual display and Mesa.
-      - uses: pyvista/setup-headless-display-action@v2
+      # Off-screen PyVista rendering (tests/test_visualize.py) needs OpenGL (also used by OpenCV) and a
+      # virtual X display. libgl1 replaces libgl1-mesa-glx, which Ubuntu 24.04 dropped.
+      - run: sudo apt-get update && sudo apt-get install -y libgl1 xvfb
       - run: pip install -e ".[dev,viz]"
-      - run: pytest -q
+      - run: xvfb-run -a pytest -q
