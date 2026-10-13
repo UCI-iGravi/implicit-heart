@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "implicit-heart"
+version = "0.1.0"
+description = "Shape interpolation of cardiac segmentation masks with variational implicit functions"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "Andy Thai" }]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy",
+    "scipy",
+    "opencv-python",
+    "scikit-image",
+    "edt",
+    "tqdm",
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+viz = ["pyvista[colormaps]", "imageio"]
+sunnybrook = ["pandas", "pydicom"]
+notebooks = ["jupyter", "ipywidgets", "nibabel"]
+dev = ["pytest", "nibabel"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# scikit-image's marching cubes sets array shapes in place, deprecated in NumPy 2.5; not our code.
+filterwarnings = ["ignore:Setting the shape on a NumPy array:DeprecationWarning"]

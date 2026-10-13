@@ -1,8 +1,15 @@
-/shape-transformation-4d/output
-/shape-transformation/.ipynb_checkpoints
-/shape-transformation/data
-*.zip
-/shape-transformation/figures
+# Local datasets and generated output (not redistributable / regenerable)
+/data/
+/output/
+/figures/
+/archive/
+
+# Python
+__pycache__/
 *.pyc
-/shape-transformation/output
-/shape-transformation/archive
+*.egg-info/
+.venv/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
