@@ -234,3 +234,43 @@ def test_windowed_fit_4d_runs_along_slices():
     assert len(w.windows) == 3
     for t, frame in ((0, V[0]), (1, V[1])):
         assert dice(w.interpolate(t), frame) > 0.97
+
+
+# --- PR review findings ---------------------------------------------------------------------
+
+def test_single_occupied_slice_fits():
+    # All constraints in one z-plane made the affine z column constant and the matrix singular.
+    V = np.zeros((2, 3, 30, 30), np.uint8)
+    V[0, 1], V[1, 1] = disk(30, 15, 15, 5), disk(30, 15, 15, 7)
+    imp = ImplicitFunction(V, tmax=1, grid_spacing=0)
+    assert dice(imp.interpolate(0)[1], V[0, 1]) > 0.95 and dice(imp.interpolate(1)[1], V[1, 1]) > 0.95
+    assert 0 < imp.interpolate(0.5)[1].sum()
+
+
+def test_windows_skip_empty_slices():
+    I = np.zeros((8, 30, 30), np.uint8)
+    I[0], I[3], I[7] = disk(30, 15, 15, 6), disk(30, 15, 15, 8), disk(30, 15, 15, 9)
+    imp = ImplicitFunction(I, tmax=7, grid_spacing=0, window=2, overlap=1)
+    assert all(len(w[2]) for w in imp.windows) and len(imp.windows) == 2
+    assert imp.interpolate(5).sum() > 0
+    with pytest.raises(ValueError, match="window"):
+        ImplicitFunction(I, tmax=7, grid_spacing=0, window=1)
+
+
+def test_small_images_get_a_grid():
+    I = np.array([disk(8, 4, 4, 2), disk(8, 4, 4, 3)])  # 8 px * grid_spacing 0.1 < 1 px
+    assert ImplicitFunction(I, tmax=1).interpolate(0).sum() > 0
+
+
+def test_spacing_tolerates_rounding():
+    I = np.array([disk(30, 15, 15, 6), disk(30, 15, 15, 8)])
+    ImplicitFunction(I, grid_spacing=0, spacing=(5, 0.9766, 0.97656))
+
+
+def test_sub_pixel_slice_steps_keep_inside_positive():
+    # tmax=1 with 3 slices puts slices 0.5 px apart; the next slice's background must not make a pixel
+    # that is inside its own slice look outside.
+    I = np.array([disk(40, 20, 20, 10), disk(40, 20, 20, 6), disk(40, 20, 20, 4)])
+    d = Data(I, tmax=1, grid_spacing=0.1)
+    assert grid_value(d, 0, 28, 20) > 0 and grid_value(d, 0, 32, 20) < 0
+    assert Data(I, tmax=10, grid_spacing=0.1)._signed_distance(0, 30, 20) == 0.25  # outermost pixel: in-plane convention unchanged

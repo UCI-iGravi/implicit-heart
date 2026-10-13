@@ -125,9 +125,12 @@ class Data:
         """
         x, y = round(x), round(y)
         dt = self.dt[idx][y, x]
+        # The boundary lies BOUNDARY_OFFSET of the way from a foreground to the adjacent background voxel.
+        # That step is a pixel in-plane, but can be shorter towards a neighbouring slice; max() keeps the
+        # in-plane convention for steps >= 1 and the right sign below.
         if dt != 0:
-            return dt - 1 + BOUNDARY_OFFSET
-        dist = -(self.dt_inv[idx][y, x] - BOUNDARY_OFFSET)
+            return max(dt - 1 + BOUNDARY_OFFSET, BOUNDARY_OFFSET * dt)
+        dist = -max(self.dt_inv[idx][y, x] - BOUNDARY_OFFSET, (1 - BOUNDARY_OFFSET) * self.dt_inv[idx][y, x])
         # Sanity check. set default value if the slice has no foreground at all
         return -3 if dist == float('-inf') else dist
 
@@ -293,8 +296,8 @@ class Data:
         h, w = self.I.shape[-2:]
         target = self.constraints[idx] if t is None else self.constraints4D[idx][z]
         dist_idx = idx if t is None else (idx, z)
-        for x in range(0, w, int(w * spacing)):
-            for y in range(0, h, int(h * spacing)):
+        for x in range(0, w, max(1, int(w * spacing))):
+            for y in range(0, h, max(1, int(h * spacing))):
                 pt = [x, y, z] if t is None else [x, y, self.slice_coords[z], t]
                 target.append((np.array(pt, dtype=float), self._signed_distance(dist_idx, x, y)))
 

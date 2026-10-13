@@ -66,3 +66,10 @@ def test_coarse_field_matches_exact_near_the_surface():
     assert np.array_equal(exact > 0, coarse > 0)
     near = np.abs(exact) < 1
     np.testing.assert_allclose(coarse[near], exact[near], atol=1e-8)
+
+
+def test_height_field_explains_an_empty_plane():
+    # A shrinking disk: f decreases along t, so far beyond the last slice it is negative everywhere.
+    imp = ImplicitFunction(np.array([disk(30, 15, 15, 8), disk(30, 15, 15, 6)]), tmax=1, grid_spacing=0)
+    with pytest.raises(ValueError, match="nowhere positive"):
+        viz.plot_height_field(imp, t=100, path="unused.png")  # a plane far beyond the last slice

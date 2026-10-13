@@ -31,8 +31,6 @@ def _phi(r2: np.ndarray) -> np.ndarray:
 
 
 class ImplicitFunction:
-    _scale = 1.0  # coordinate scale used by the solver; default for instances pickled before it existed
-    windows = None
 
     def __init__(self, I: np.ndarray or str = None, tmax: float = 1.0, tlist: list = None, grid_spacing=0.1, resolution=1.0, use_propagation=False,
                  spacing: tuple = None, window: int = None, overlap: int = None):
@@ -51,8 +49,8 @@ class ImplicitFunction:
         :param spacing: physical voxel size (z, y, x) with square pixels (y == x). Slices are then placed
                         spacing_z / spacing_x pixel units apart (for 3D input this replaces tmax, unless
                         tlist is given). Default: one unit per slice in 4D, tmax/tlist in 3D.
-        :param window: fit separate thin-plate functions on runs of `window` consecutive slices (for 4D input:
-                       slices of every frame), blended smoothly along the slice axis. Cost grows linearly
+        :param window: fit separate thin-plate functions on runs of `window` consecutive slices that have
+                       constraints (for 4D input: in any frame), blended smoothly along the slice axis. Cost grows linearly
                        with the number of slices instead of cubically; on a 280-section brain it matched one
                        global fit's accuracy at 2.5-4x the speed. None: one global fit.
         :param overlap: slices shared by neighbouring windows (default window // 2, at least 1).
@@ -70,7 +68,7 @@ class ImplicitFunction:
             # Define all internal parameters first.
             if tlist and len(tlist) != I.shape[0]:
                 raise Exception("tlist and I do not have the same number of time-steps.")
-            if spacing is not None and spacing[1] != spacing[2]:
+            if spacing is not None and not np.isclose(spacing[1], spacing[2], rtol=1e-3):
                 raise ValueError(f"In-plane pixels must be square, got spacing (z, y, x) = {spacing}.")
             sz = 1.0 if spacing is None else spacing[0] / spacing[2]
             # Coordinate of every input slice along the slice axis.
@@ -126,7 +124,9 @@ class ImplicitFunction:
             logger.debug("Created %d constraints in %.2fs. Solving.", k, time.time() - start)
             start = time.time()
 
-            fitted = coords[kept]
+            fitted = np.unique(self._c[:, 2])  # slice coordinates that carry constraints (column 2)
+            if window is not None and window < 2:
+                raise ValueError(f"window must be at least 2 slices, got {window}.")
             self.windows = None  # (lo, hi, constraint indices, d, p) per window of a windowed fit
             if window is None or window >= len(fitted):
                 self._d, self._p = self._solve(self._c, h)
@@ -155,12 +155,19 @@ class ImplicitFunction:
         For systems with up to a few thousand constraints, the system can be solved directly with a
         technique such as symmetric LU decomposition (Turk & O'Brien used it for all their examples).
         """
-        M = self._create_matrix(c * self._scale)
-        rhs = np.concatenate([np.ravel(h), np.zeros(c.shape[1] + 1)])
+        if len(c) == 0:
+            raise ValueError("No constraints to fit: the masks are empty.")
+        # A coordinate that is the same for every constraint (e.g. one occupied slice) would make its affine
+        # column a multiple of the constant one, i.e. a singular matrix; leave it out of P (its p is 0).
+        varying = np.flatnonzero(np.ptp(c, axis=0) > 0)
+        M = self._create_matrix(c[:, varying] * self._scale)
+        rhs = np.concatenate([np.ravel(h), np.zeros(len(varying) + 1)])
         lu, piv = scipy.linalg.lu_factor(M, overwrite_a=True, check_finite=False)  # M is not kept: k^2 floats
         del M
         x = scipy.linalg.lu_solve((lu, piv), rhs)
-        return x[:len(c)], x[len(c):]
+        p = np.zeros(c.shape[1] + 1)
+        p[0], p[1 + varying] = x[len(c)], x[len(c) + 1:]
+        return x[:len(c)], p
         
 
     def interpolate(self, t: float, thresh: float = 0.0, postprocess: bool = False, kernel_size=3,
@@ -269,7 +276,8 @@ class ImplicitFunction:
     
     def save(self, filepath: str):
         """
-        Saves the ImplicitFunction object to a provided file.
+        Saves the ImplicitFunction object to a provided file (a pickle: load it with the same package
+        version).
         :param filepath: the file to save the current ImplicitFunction object to
         """
         with open(filepath, 'wb') as f:        

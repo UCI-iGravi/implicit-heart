@@ -103,6 +103,8 @@ def contour_lines(imp, t=0, spacing=(1, 1, 1)):
                                     np.full(len(xy), z * z_scale)])
             lines.append(np.r_[len(ring) + 1, len(points) + np.arange(len(ring)), len(points)])
             points.extend(ring)
+    if not lines:
+        raise ValueError("The fitted masks have no contours to draw.")
     return pv.PolyData(np.array(points), lines=np.concatenate(lines))
 
 
@@ -221,6 +223,8 @@ def plot_height_field(imp, t=0, z=None, path=None, step=1):
     xs, ys, F, _, _ = _plane(imp, t, z, step)
     # Crop to the neighbourhood of the shape; the far field is nearly linear and would flatten the bump.
     rows, cols = np.where(F > 0)
+    if not len(rows):
+        raise ValueError(f"f is nowhere positive on the plane t={t}, z={z}: no zero level to show.")
     pad = int(1.0 * max(np.ptp(rows), np.ptp(cols))) + 1
     r0, r1 = max(rows.min() - pad, 0), rows.max() + pad + 1
     c0, c1 = max(cols.min() - pad, 0), cols.max() + pad + 1
